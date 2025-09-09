@@ -160,6 +160,7 @@
           >
             <option value="deepseek">DeepSeek R1 (7405字符)</option>
             <option value="gb2312">GB2312 (7445字符)</option>
+            <option value="latin">Latin1 (190字符)</option>
           </select>
           <p class="text-xs text-gray-500 mt-1">建议使用 DeepSeek R1</p>
         </div>
@@ -172,7 +173,12 @@
           <div>字体文件: {{ modelValue.custom.file.name }}</div>
           <div>字号: {{ localCustom.size }}px</div>
           <div>位深: {{ localCustom.bpp }}bpp</div>
-          <div>字符集: {{ localCustom.charset === 'deepseek' ? 'DeepSeek R1' : 'GB2312' }}</div>
+          <div>字符集: {{ 
+            localCustom.charset === 'deepseek' ? 'DeepSeek R1' : 
+            localCustom.charset === 'gb2312' ? 'GB2312' : 
+            localCustom.charset === 'latin' ? 'Latin1' : 
+            localCustom.charset 
+          }}</div>
           <div class="text-xs text-blue-600 mt-2">
             输出文件名: font_custom_{{ localCustom.size }}_{{ localCustom.bpp }}.bin
           </div>

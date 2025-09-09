@@ -82,16 +82,8 @@ class CBinFont {
     const bpp = this.opts.bpp;
     const kern_classes = kern.classes;
     const bitmap_format = this.glyf.getCompressionCode();
-    console.log('cmap_num', cmap_num, 'kern_classes', kern_classes, 'bitmap_format', bitmap_format);
     head_view.setUint16(pos, cmap_num | (bpp << 9) | (kern_classes << (9 + 4)) | (bitmap_format << (9 + 4 + 1)), true); pos += 2;
 
-    // 使用浏览器兼容的方式合并 ArrayBuffer
-    // print the size of the buffers
-    console.log('head_buf.byteLength', head_buf.byteLength);
-    console.log('kern_buf.byteLength', kern_buf.byteLength);
-    console.log('bitmap_buf.byteLength', bitmap_buf.byteLength);
-    console.log('glyph_dsc_buf.byteLength', glyph_dsc_buf.byteLength);
-    console.log('cmaps_buf.byteLength', cmaps_buf.byteLength);
     return this.concatArrayBuffers([
       head_buf,
       kern_buf,
@@ -448,13 +440,9 @@ class CmapTable {
         glyph_ptr = this.balign4(this.uint8ArrayToBuffer(new Uint8Array(d)));
       } else if (format === 'sparse_tiny') {
         has_charcodes = true;
-        console.log('codepoints', codepoints, 'start_glyph_id', start_glyph_id);
         let d = this.collect_sparse_data(codepoints, start_glyph_id);
         entries_count = d.codes.length;
-        console.log('d.codes', d.codes);
         unicode_ptr = this.balign4(this.uint16ArrayToBuffer(new Uint16Array(d.codes)));
-        // to hex
-        console.log('unicode_ptr', unicode_ptr.byteLength, new Uint8Array(unicode_ptr));
       } else { // assume format === 'sparse'
         has_charcodes = true;
         has_ids = true;

@@ -355,7 +355,7 @@ class AssetsBuilder {
     const fontInfo = this.getFontInfo()
     
     if (fontInfo && fontInfo.type === 'custom' && !this.convertedFonts.has(fontInfo.filename)) {
-      if (progressCallback) progressCallback(5, '转换自定义字体...')
+      if (progressCallback) progressCallback(20, '转换自定义字体...')
       
       try {
         const convertOptions = {
@@ -368,7 +368,7 @@ class AssetsBuilder {
           range: fontInfo.config.range || '',
           compression: false,
           progressCallback: (progress, message) => {
-            if (progressCallback) progressCallback(5 + progress * 0.3, `字体转换: ${message}`)
+            if (progressCallback) progressCallback(20 + progress * 0.2, `字体转换: ${message}`)
           }
         }
         
@@ -376,11 +376,8 @@ class AssetsBuilder {
         
         // 使用浏览器端字体转换器
         await this.fontConverterBrowser.initialize()
-        console.log('font convertOptions', convertOptions)
         convertedFont = await this.fontConverterBrowser.convertToCBIN(convertOptions)
         this.convertedFonts.set(fontInfo.filename, convertedFont)
-        
-        if (progressCallback) progressCallback(35, '字体转换完成')
       } catch (error) {
         console.error('字体转换失败:', error)
         throw new Error(`字体转换失败: ${error.message}`)
@@ -404,9 +401,10 @@ class AssetsBuilder {
       // 预处理自定义字体
       await this.preprocessCustomFonts(progressCallback)
       
-      const resources = this.preparePackageResources()
-      
+      await new Promise(resolve => setTimeout(resolve, 100))
       if (progressCallback) progressCallback(40, '准备资源文件...')
+      
+      const resources = this.preparePackageResources()
       
       // 清理生成器状态
       this.wakenetPacker.clear()
@@ -415,6 +413,7 @@ class AssetsBuilder {
       // 处理各类资源文件
       await this.processResourceFiles(resources, progressCallback)
       
+      await new Promise(resolve => setTimeout(resolve, 100))
       if (progressCallback) progressCallback(90, '生成最终文件...')
       
       // 生成最终的 assets.bin
@@ -570,7 +569,7 @@ class AssetsBuilder {
     // 添加 index.json 文件
     const indexJsonData = new TextEncoder().encode(JSON.stringify(resources.indexJson, null, 2))
     // print json string
-    console.log(JSON.stringify(resources.indexJson, null, 2))
+    console.log('index.json', resources.indexJson);
     this.spiffsGenerator.addFile('index.json', indexJsonData.buffer)
     
     for (const resource of resources.files) {

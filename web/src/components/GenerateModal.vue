@@ -73,7 +73,7 @@
           </div>
           
           <div class="space-y-4">
-            <h4 class="text-lg font-medium text-gray-900">正在生成 Assets.bin</h4>
+            <p class="text-gray-600 mt-2">正在生成 Assets.bin</p>
             <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
               <div 
                 class="bg-primary-500 h-2 rounded-full transition-all duration-500 ease-out"
@@ -113,14 +113,13 @@
 
         <!-- 完成状态 -->
         <div v-if="isCompleted" class="text-center space-y-6">
-          <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-            <svg class="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+          <div class="mx-auto flex items-center justify-center">
+            <svg class="w-20 h-20 text-green-600" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
             </svg>
           </div>
           
           <div>
-            <h4 class="text-lg font-medium text-gray-900">生成完成!</h4>
             <p class="text-gray-600 mt-2">您的 assets.bin 文件已准备就绪</p>
           </div>
 
@@ -143,16 +142,6 @@
               下载 assets.bin
             </button>
             
-            <button
-              v-if="options.backup"
-              @click="downloadConfig"
-              class="w-full bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
-            >
-              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/>
-              </svg>
-              下载配置备份
-            </button>
           </div>
         </div>
       </div>
@@ -207,9 +196,6 @@ const generatedFileSize = ref('')
 const generationTime = ref('')
 const generatedBlob = ref(null)
 
-const options = ref({
-  backup: true
-})
 
 const progressSteps = ref([
   { id: 1, name: '初始化生成器', status: 'pending' },
@@ -461,7 +447,7 @@ const startGeneration = async () => {
     
     // 生成assets.bin
     const blob = await builder.generateAssetsBin((progressPercent, message) => {
-      progress.value = progressPercent
+      progress.value = parseInt(progressPercent)
       currentStep.value = message
       
       // 更新进度步骤状态
@@ -524,17 +510,6 @@ const downloadFile = () => {
   }
 }
 
-const downloadConfig = () => {
-  // 下载配置备份
-  const configData = JSON.stringify(props.config, null, 2)
-  const element = document.createElement('a')
-  element.setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(configData))
-  element.setAttribute('download', 'xiaozhi_config_backup.json')
-  element.style.display = 'none'
-  document.body.appendChild(element)
-  element.click()
-  document.body.removeChild(element)
-}
 
 onMounted(() => {
   initializeFileList()

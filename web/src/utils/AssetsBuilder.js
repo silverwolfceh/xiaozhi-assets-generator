@@ -1,0 +1,1013 @@
+/**
+ * AssetsBuilder 类
+ * 用于处理小智 AI 自定义主题的 assets.bin 打包生成
+ * 
+ * 主要功能：
+ * - 配置验证和处理
+ * - 生成 index.json 内容
+ * - 管理资源文件
+ * - 与后端 API 交互生成 assets.bin
+ * - 集成浏览器端字体转换功能
+ */
+
+import browserFontConverter from './font_conv/BrowserFontConverter.js'
+import WakenetModelPacker from './WakenetModelPacker.js'
+import SpiffsGenerator from './SpiffsGenerator.js'
+
+class AssetsBuilder {
+  constructor() {
+    this.config = null
+    this.resources = new Map() // 存储资源文件
+    this.tempFiles = [] // 临时文件列表
+    this.fontConverterBrowser = browserFontConverter // 浏览器端字体转换器
+    this.convertedFonts = new Map() // 缓存转换后的字体
+    this.wakenetPacker = new WakenetModelPacker() // 唤醒词模型打包器
+    this.spiffsGenerator = new SpiffsGenerator() // SPIFFS 生成器
+  }
+
+  /**
+   * 设置配置对象
+   * @param {Object} config - 完整的配置对象
+   */
+  setConfig(config) {
+    if (!this.validateConfig(config)) {
+      throw new Error('配置对象验证失败')
+    }
+    this.config = { ...config }
+    return this
+  }
+
+  /**
+   * 验证配置对象
+   * @param {Object} config - 待验证的配置对象
+   * @returns {boolean} 验证结果
+   */
+  validateConfig(config) {
+    if (!config) return false
+    
+    // 验证芯片配置
+    if (!config.chip?.model) {
+      console.error('缺少芯片型号配置')
+      return false
+    }
+
+    // 验证显示配置
+    const display = config.chip.display
+    if (!display?.width || !display?.height) {
+      console.error('缺少显示分辨率配置')
+      return false
+    }
+
+    // 验证字体配置
+    const font = config.theme?.font
+    if (font?.type === 'preset' && !font.preset) {
+      console.error('预设字体配置不完整')
+      return false
+    }
+    if (font?.type === 'custom' && !font.custom?.file) {
+      console.error('自定义字体文件未提供')
+      return false
+    }
+
+    return true
+  }
+
+  /**
+   * 添加资源文件
+   * @param {string} key - 资源键名
+   * @param {File|Blob} file - 文件对象
+   * @param {string} filename - 文件名
+   */
+  addResource(key, file, filename) {
+    this.resources.set(key, {
+      file,
+      filename,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified || Date.now()
+    })
+    return this
+  }
+
+  /**
+   * 获取唤醒词模型信息
+   * @returns {Object|null} 唤醒词模型信息
+   */
+  getWakewordModelInfo() {
+    const chipModel = this.config.chip.model
+    const wakeword = this.config.theme.wakeword
+    
+    if (!wakeword) return null
+
+    // 根据芯片型号确定唤醒词模型类型
+    const isC3OrC6 = chipModel === 'esp32c3' || chipModel === 'esp32c6'
+    const modelType = isC3OrC6 ? 'WakeNet9s' : 'WakeNet9'
+    
+    return {
+      name: wakeword,
+      type: modelType,
+      filename: 'srmodels.bin'
+    }
+  }
+
+  /**
+   * 获取字体信息
+   * @returns {Object|null} 字体信息
+   */
+  getFontInfo() {
+    const font = this.config.theme.font
+    
+    if (font.type === 'preset') {
+      return {
+        type: 'preset',
+        filename: `${font.preset}.bin`,
+        source: font.preset
+      }
+    }
+    
+    if (font.type === 'custom' && font.custom.file) {
+      const custom = font.custom
+      const filename = `font_custom_${custom.size}_${custom.bpp}.bin`
+      
+      return {
+        type: 'custom',
+        filename,
+        source: font.custom.file,
+        config: {
+          size: custom.size,
+          bpp: custom.bpp,
+          charset: custom.charset
+        }
+      }
+    }
+    
+    return null
+  }
+
+  /**
+   * 获取表情集合信息
+   * @returns {Array} 表情集合信息数组
+   */
+  getEmojiCollectionInfo() {
+    const emoji = this.config.theme.emoji
+    const collection = []
+    
+    if (emoji.type === 'preset') {
+      // 预设表情包
+      const presetEmojis = [
+        'neutral', 'happy', 'laughing', 'funny', 'sad', 'angry', 'crying',
+        'loving', 'embarrassed', 'surprised', 'shocked', 'thinking', 'winking',
+        'cool', 'relaxed', 'delicious', 'kissy', 'confident', 'sleepy', 'silly', 'confused'
+      ]
+      
+      const size = emoji.preset === 'twemoji32' ? '32' : '64'
+      presetEmojis.forEach(name => {
+        collection.push({
+          name,
+          file: `${name}.png`,
+          source: `preset:${emoji.preset}`,
+          size: { width: parseInt(size), height: parseInt(size) }
+        })
+      })
+    } else if (emoji.type === 'custom') {
+      // 自定义表情包
+      const images = emoji.custom.images || {}
+      const size = emoji.custom.size || { width: 64, height: 64 }
+      
+      Object.entries(images).forEach(([name, file]) => {
+        if (file) {
+          collection.push({
+            name,
+            file: `${name}.${emoji.custom.format}`,
+            source: file,
+            size: { ...size }
+          })
+        }
+      })
+      
+      // 确保至少有 neutral 表情
+      if (!collection.find(item => item.name === 'neutral')) {
+        console.warn('警告：未提供 neutral 表情，将使用默认图片')
+      }
+    }
+    
+    return collection
+  }
+
+  /**
+   * 获取皮肤配置信息
+   * @returns {Object} 皮肤配置信息
+   */
+  getSkinInfo() {
+    const skin = this.config.theme.skin
+    const result = {}
+    
+    // 处理浅色模式
+    if (skin.light) {
+      result.light = {
+        text_color: skin.light.textColor || '#000000',
+        background_color: skin.light.backgroundColor || '#ffffff'
+      }
+      
+      if (skin.light.backgroundType === 'image' && skin.light.backgroundImage) {
+        result.light.background_image = 'background_light.raw'
+      }
+    }
+    
+    // 处理深色模式  
+    if (skin.dark) {
+      result.dark = {
+        text_color: skin.dark.textColor || '#ffffff',
+        background_color: skin.dark.backgroundColor || '#121212'
+      }
+      
+      if (skin.dark.backgroundType === 'image' && skin.dark.backgroundImage) {
+        result.dark.background_image = 'background_dark.raw'
+      }
+    }
+    
+    return result
+  }
+
+  /**
+   * 生成 index.json 内容
+   * @returns {Object} index.json 对象
+   */
+  generateIndexJson() {
+    if (!this.config) {
+      throw new Error('配置对象未设置')
+    }
+
+    const indexData = {
+      version: 1,
+      chip_model: this.config.chip.model,
+      display_config: {
+        width: this.config.chip.display.width,
+        height: this.config.chip.display.height,
+        monochrome: false,
+        color: this.config.chip.display.color || 'RGB565'
+      }
+    }
+
+    // 添加唤醒词模型
+    const wakewordInfo = this.getWakewordModelInfo()
+    if (wakewordInfo) {
+      indexData.srmodels = wakewordInfo.filename
+    }
+
+    // 添加字体信息
+    const fontInfo = this.getFontInfo()
+    if (fontInfo) {
+      indexData.text_font = fontInfo.filename
+    }
+
+    // 添加皮肤配置
+    const skinInfo = this.getSkinInfo()
+    if (Object.keys(skinInfo).length > 0) {
+      indexData.skin = skinInfo
+    }
+
+    // 添加表情集合
+    const emojiCollection = this.getEmojiCollectionInfo()
+    if (emojiCollection.length > 0) {
+      indexData.emoji_collection = emojiCollection.map(emoji => ({
+        name: emoji.name,
+        file: emoji.file
+      }))
+    }
+
+    return indexData
+  }
+
+  /**
+   * 准备打包资源
+   * @returns {Object} 打包资源清单
+   */
+  preparePackageResources() {
+    const resources = {
+      files: [],
+      indexJson: this.generateIndexJson(),
+      config: { ...this.config }
+    }
+
+    // 添加唤醒词模型
+    const wakewordInfo = this.getWakewordModelInfo()
+    if (wakewordInfo && wakewordInfo.name) {
+      resources.files.push({
+        type: 'wakeword',
+        name: wakewordInfo.name,
+        filename: wakewordInfo.filename,
+        modelType: wakewordInfo.type
+      })
+    }
+
+    // 添加字体文件
+    const fontInfo = this.getFontInfo()
+    if (fontInfo) {
+      resources.files.push({
+        type: 'font',
+        filename: fontInfo.filename,
+        source: fontInfo.source,
+        config: fontInfo.config || null
+      })
+    }
+
+    // 添加表情文件
+    const emojiCollection = this.getEmojiCollectionInfo()
+    emojiCollection.forEach(emoji => {
+      resources.files.push({
+        type: 'emoji',
+        name: emoji.name,
+        filename: emoji.file,
+        source: emoji.source,
+        size: emoji.size
+      })
+    })
+
+    // 添加背景图片
+    const skin = this.config.theme.skin
+    if (skin.light?.backgroundType === 'image' && skin.light.backgroundImage) {
+      resources.files.push({
+        type: 'background',
+        filename: 'background_light.raw',
+        source: skin.light.backgroundImage,
+        mode: 'light'
+      })
+    }
+    if (skin.dark?.backgroundType === 'image' && skin.dark.backgroundImage) {
+      resources.files.push({
+        type: 'background', 
+        filename: 'background_dark.raw',
+        source: skin.dark.backgroundImage,
+        mode: 'dark'
+      })
+    }
+
+    return resources
+  }
+
+  /**
+   * 预处理自定义字体
+   * @param {Function} progressCallback - 进度回调函数  
+   * @returns {Promise<void>}
+   */
+  async preprocessCustomFonts(progressCallback = null) {
+    const fontInfo = this.getFontInfo()
+    
+    if (fontInfo && fontInfo.type === 'custom' && !this.convertedFonts.has(fontInfo.filename)) {
+      if (progressCallback) progressCallback(5, '转换自定义字体...')
+      
+      try {
+        const convertOptions = {
+          fontFile: fontInfo.source,
+          fontName: fontInfo.filename.replace(/\.bin$/, ''),
+          fontSize: fontInfo.config.size,
+          bpp: fontInfo.config.bpp,
+          charset: fontInfo.config.charset,
+          symbols: fontInfo.config.symbols || '',
+          range: fontInfo.config.range || '',
+          compression: false,
+          progressCallback: (progress, message) => {
+            if (progressCallback) progressCallback(5 + progress * 0.3, `字体转换: ${message}`)
+          }
+        }
+        
+        let convertedFont
+        
+        // 使用浏览器端字体转换器
+        await this.fontConverterBrowser.initialize()
+        console.log('font convertOptions', convertOptions)
+        convertedFont = await this.fontConverterBrowser.convertToCBIN(convertOptions)
+        this.convertedFonts.set(fontInfo.filename, convertedFont)
+        
+        if (progressCallback) progressCallback(35, '字体转换完成')
+      } catch (error) {
+        console.error('字体转换失败:', error)
+        throw new Error(`字体转换失败: ${error.message}`)
+      }
+    }
+  }
+
+  /**
+   * 生成 assets.bin
+   * @param {Function} progressCallback - 进度回调函数
+   * @returns {Promise<Blob>} 生成的 assets.bin 文件
+   */
+  async generateAssetsBin(progressCallback = null) {
+    if (!this.config) {
+      throw new Error('配置对象未设置')
+    }
+
+    try {
+      if (progressCallback) progressCallback(0, '开始生成...')
+      
+      // 预处理自定义字体
+      await this.preprocessCustomFonts(progressCallback)
+      
+      const resources = this.preparePackageResources()
+      
+      if (progressCallback) progressCallback(40, '准备资源文件...')
+      
+      // 清理生成器状态
+      this.wakenetPacker.clear()
+      this.spiffsGenerator.clear()
+      
+      // 处理各类资源文件
+      await this.processResourceFiles(resources, progressCallback)
+      
+      if (progressCallback) progressCallback(90, '生成最终文件...')
+      
+      // 生成最终的 assets.bin
+      const assetsBinData = await this.spiffsGenerator.generate((progress, message) => {
+        if (progressCallback) {
+          progressCallback(90 + progress * 0.1, message)
+        }
+      })
+      
+      if (progressCallback) progressCallback(100, '生成完成')
+      
+      return new Blob([assetsBinData], { type: 'application/octet-stream' })
+      
+    } catch (error) {
+      console.error('生成 assets.bin 失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 下载 assets.bin 文件
+   * @param {Blob} blob - assets.bin 文件数据
+   * @param {string} filename - 下载文件名
+   */
+  downloadAssetsBin(blob, filename = 'assets.bin') {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  /**
+   * 获取字体信息（包含转换功能）
+   * @param {File} fontFile - 字体文件（可选，如果提供则获取该文件的信息）
+   * @returns {Promise<Object>} 字体信息
+   */
+  async getFontInfoWithDetails(fontFile = null) {
+    try {
+      const file = fontFile || this.config?.theme?.font?.custom?.file
+      if (!file) return null
+      
+      let info
+      
+      // 使用浏览器端字体转换器
+      await this.fontConverterBrowser.initialize()
+      info = await this.fontConverterBrowser.getFontInfo(file)
+      
+      return {
+        ...info,
+        file: file,
+        isCustom: true
+      }
+    } catch (error) {
+      console.error('获取字体详细信息失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 估算字体大小
+   * @param {Object} fontConfig - 字体配置
+   * @returns {Promise<Object>} 大小估算结果
+   */
+  async estimateFontSize(fontConfig = null) {
+    try {
+      const config = fontConfig || this.config?.theme?.font?.custom
+      if (!config) return null
+      
+      const estimateOptions = {
+        fontSize: config.size,
+        bpp: config.bpp,
+        charset: config.charset,
+        symbols: config.symbols || '',
+        range: config.range || ''
+      }
+      
+      let sizeInfo
+      
+      // 使用浏览器端字体转换器
+      sizeInfo = this.fontConverterBrowser.estimateSize(estimateOptions)
+      
+      return sizeInfo
+    } catch (error) {
+      console.error('估算字体大小失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 验证自定义字体配置
+   * @param {Object} fontConfig - 字体配置
+   * @returns {Object} 验证结果
+   */
+  validateCustomFont(fontConfig) {
+    const errors = []
+    const warnings = []
+    
+    if (!fontConfig.file) {
+      errors.push('缺少字体文件')
+    } else {
+      // 使用浏览器端转换器验证
+      const isValid = this.fontConverterBrowser.validateFont(fontConfig.file)
+        
+      if (!isValid) {
+        errors.push('字体文件格式不支持')
+      }
+    }
+    
+    if (fontConfig.size < 8 || fontConfig.size > 80) {
+      errors.push('字体大小必须在 8-80 之间')
+    }
+    
+    if (![1, 2, 4, 8].includes(fontConfig.bpp)) {
+      errors.push('BPP 必须是 1, 2, 4 或 8')
+    }
+    
+    if (!fontConfig.charset && !fontConfig.symbols && !fontConfig.range) {
+      warnings.push('未指定字符集、符号或范围，将使用默认字符集')
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings
+    }
+  }
+
+
+  /**
+   * 获取字体转换器状态
+   * @returns {Object} 转换器状态信息
+   */
+  getConverterStatus() {
+    return {
+      initialized: this.fontConverterBrowser.initialized,
+      supportedFormats: this.fontConverterBrowser.supportedFormats
+    }
+  }
+
+  /**
+   * 处理资源文件
+   * @param {Object} resources - 资源配置
+   * @param {Function} progressCallback - 进度回调
+   */
+  async processResourceFiles(resources, progressCallback = null) {
+    let processedCount = 0
+    const totalFiles = resources.files.length
+    
+    // 添加 index.json 文件
+    const indexJsonData = new TextEncoder().encode(JSON.stringify(resources.indexJson, null, 2))
+    // print json string
+    console.log(JSON.stringify(resources.indexJson, null, 2))
+    this.spiffsGenerator.addFile('index.json', indexJsonData.buffer)
+    
+    for (const resource of resources.files) {
+      const progressPercent = 40 + (processedCount / totalFiles) * 40
+      if (progressCallback) {
+        progressCallback(progressPercent, `处理文件: ${resource.filename}`)
+      }
+      
+      try {
+        await this.processResourceFile(resource)
+        processedCount++
+      } catch (error) {
+        console.error(`处理资源文件失败: ${resource.filename}`, error)
+        throw new Error(`处理资源文件失败: ${resource.filename} - ${error.message}`)
+      }
+    }
+  }
+
+  /**
+   * 处理单个资源文件
+   * @param {Object} resource - 资源配置
+   */
+  async processResourceFile(resource) {
+    switch (resource.type) {
+      case 'wakeword':
+        await this.processWakewordModel(resource)
+        break
+      case 'font':
+        await this.processFontFile(resource)
+        break
+      case 'emoji':
+        await this.processEmojiFile(resource)
+        break
+      case 'background':
+        await this.processBackgroundFile(resource)
+        break
+      default:
+        console.warn(`未知的资源类型: ${resource.type}`)
+    }
+  }
+
+  /**
+   * 处理唤醒词模型
+   * @param {Object} resource - 资源配置
+   */
+  async processWakewordModel(resource) {
+    const success = await this.wakenetPacker.loadModelFromShare(resource.name)
+    if (!success) {
+      throw new Error(`加载唤醒词模型失败: ${resource.name}`)
+    }
+    
+    const srmodelsData = this.wakenetPacker.packModels()
+    this.spiffsGenerator.addFile(resource.filename, srmodelsData)
+  }
+
+  /**
+   * 处理字体文件
+   * @param {Object} resource - 资源配置
+   */
+  async processFontFile(resource) {
+    if (resource.config) {
+      // 自定义字体，使用转换后的数据
+      const convertedFont = this.convertedFonts.get(resource.filename)
+      if (convertedFont) {
+        this.spiffsGenerator.addFile(resource.filename, convertedFont)
+      } else {
+        throw new Error(`找不到转换后的字体: ${resource.filename}`)
+      }
+    } else {
+      // 预设字体，从share/fonts目录加载
+      const fontData = await this.loadPresetFont(resource.source)
+      this.spiffsGenerator.addFile(resource.filename, fontData)
+    }
+  }
+
+  /**
+   * 处理表情文件
+   * @param {Object} resource - 资源配置
+   */
+  async processEmojiFile(resource) {
+    let imageData
+    let needsScaling = false
+    let imageFormat = 'png' // 默认格式
+    
+    if (typeof resource.source === 'string' && resource.source.startsWith('preset:')) {
+      // 预设表情包
+      const presetName = resource.source.replace('preset:', '')
+      imageData = await this.loadPresetEmoji(presetName, resource.name)
+    } else {
+      // 自定义表情
+      const file = resource.source
+      imageData = await this.fileToArrayBuffer(file)
+      
+      // 获取文件格式
+      const fileExtension = file.name.split('.').pop().toLowerCase()
+      imageFormat = fileExtension
+      
+      // 检查图片实际尺寸
+      try {
+        const actualDimensions = await this.getImageDimensions(file)
+        const targetSize = resource.size || { width: 32, height: 32 }
+        
+        // 如果实际尺寸超出目标尺寸范围，需要缩放
+        if (actualDimensions.width > targetSize.width || 
+            actualDimensions.height > targetSize.height) {
+          needsScaling = true
+          console.log(`表情 ${resource.name} 需要缩放: ${actualDimensions.width}x${actualDimensions.height} -> ${targetSize.width}x${targetSize.height}`)
+        }
+      } catch (error) {
+        console.warn(`无法获取表情图片尺寸: ${resource.name}`, error)
+      }
+    }
+    
+    // 如果需要缩放，进行等比例缩放
+    if (needsScaling) {
+      try {
+        const targetSize = resource.size || { width: 32, height: 32 }
+        imageData = await this.scaleImageToFit(resource.source, targetSize, imageFormat)
+      } catch (error) {
+        console.error(`表情图片缩放失败: ${resource.name}`, error)
+        // 缩放失败时使用原图
+        imageData = await this.fileToArrayBuffer(resource.source)
+      }
+    }
+    
+    this.spiffsGenerator.addFile(resource.filename, imageData, {
+      width: resource.size?.width || 0,
+      height: resource.size?.height || 0
+    })
+  }
+
+  /**
+   * 处理背景文件  
+   * @param {Object} resource - 资源配置
+   */
+  async processBackgroundFile(resource) {
+    const imageData = await this.fileToArrayBuffer(resource.source)
+    
+    // 将图片转换为RGB565格式的原始数据
+    const rawData = await this.convertImageToRgb565(imageData)
+    this.spiffsGenerator.addFile(resource.filename, rawData)
+  }
+
+  /**
+   * 加载预设字体
+   * @param {string} fontName - 字体名称
+   * @returns {Promise<ArrayBuffer>} 字体数据
+   */
+  async loadPresetFont(fontName) {
+    try {
+      const response = await fetch(`/fonts/${fontName}.bin`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      return await response.arrayBuffer()
+    } catch (error) {
+      throw new Error(`加载预设字体失败: ${fontName} - ${error.message}`)
+    }
+  }
+
+  /**
+   * 加载预设表情
+   * @param {string} presetName - 预设名称 (twemoji32/twemoji64)
+   * @param {string} emojiName - 表情名称
+   * @returns {Promise<ArrayBuffer>} 表情数据
+   */
+  async loadPresetEmoji(presetName, emojiName) {
+    try {
+      const response = await fetch(`/${presetName}/${emojiName}.png`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      return await response.arrayBuffer()
+    } catch (error) {
+      throw new Error(`加载预设表情失败: ${presetName}/${emojiName} - ${error.message}`)
+    }
+  }
+
+  /**
+   * 将文件转换为ArrayBuffer
+   * @param {File|Blob} file - 文件对象
+   * @returns {Promise<ArrayBuffer>} 文件数据
+   */
+  fileToArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => reject(new Error('读取文件失败'))
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
+  /**
+   * 缩放图片以适应指定尺寸（等比例缩放，contain效果）
+   * @param {ArrayBuffer|File} imageData - 图片数据
+   * @param {Object} targetSize - 目标尺寸 {width, height}
+   * @param {string} format - 图片格式（用于透明背景处理）
+   * @returns {Promise<ArrayBuffer>} 缩放后的图片数据
+   */
+  async scaleImageToFit(imageData, targetSize, format = 'png') {
+    return new Promise((resolve, reject) => {
+      const blob = imageData instanceof File ? imageData : new Blob([imageData])
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          
+          // 设置目标画布尺寸
+          canvas.width = targetSize.width
+          canvas.height = targetSize.height
+          
+          // 计算等比例缩放尺寸（contain效果）
+          const imgAspectRatio = img.width / img.height
+          const targetAspectRatio = targetSize.width / targetSize.height
+          
+          let drawWidth, drawHeight, offsetX, offsetY
+          
+          if (imgAspectRatio > targetAspectRatio) {
+            // 图片较宽，按宽度缩放
+            drawWidth = targetSize.width
+            drawHeight = targetSize.width / imgAspectRatio
+            offsetX = 0
+            offsetY = (targetSize.height - drawHeight) / 2
+          } else {
+            // 图片较高，按高度缩放
+            drawHeight = targetSize.height
+            drawWidth = targetSize.height * imgAspectRatio
+            offsetX = (targetSize.width - drawWidth) / 2
+            offsetY = 0
+          }
+          
+          // 对PNG格式保持透明背景
+          if (format === 'png') {
+            // 清除画布，保持透明
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+          } else {
+            // 其他格式使用白色背景
+            ctx.fillStyle = '#FFFFFF'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+          }
+          
+          // 绘制缩放后的图片
+          ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
+          
+          // 转换为ArrayBuffer
+          canvas.toBlob((blob) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error('转换图片数据失败'))
+            reader.readAsArrayBuffer(blob)
+          }, `image/${format}`)
+          
+          URL.revokeObjectURL(url)
+        } catch (error) {
+          URL.revokeObjectURL(url)
+          reject(error)
+        }
+      }
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('无法加载图片'))
+      }
+      
+      img.src = url
+    })
+  }
+
+  /**
+   * 获取图片尺寸信息
+   * @param {ArrayBuffer|File} imageData - 图片数据
+   * @returns {Promise<Object>} 图片尺寸信息 {width, height}
+   */
+  async getImageDimensions(imageData) {
+    return new Promise((resolve, reject) => {
+      const blob = imageData instanceof File ? imageData : new Blob([imageData])
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve({
+          width: img.width,
+          height: img.height
+        })
+      }
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('无法获取图片尺寸'))
+      }
+      
+      img.src = url
+    })
+  }
+
+  /**
+   * 将图片转换为RGB565格式的原始数据
+   * @param {ArrayBuffer} imageData - 图片数据
+   * @returns {Promise<ArrayBuffer>} RGB565原始数据
+   */
+  async convertImageToRgb565(imageData) {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([imageData])
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          
+          canvas.width = this.config.chip.display.width
+          canvas.height = this.config.chip.display.height
+          
+          // 绘制图片到画布，自动缩放到屏幕分辨率
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          
+          // 获取像素数据
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const pixels = imageData.data
+          
+          // 转换为RGB565格式
+          const rgb565Data = new ArrayBuffer(canvas.width * canvas.height * 2)
+          const rgb565View = new Uint16Array(rgb565Data)
+          
+          for (let i = 0; i < pixels.length; i += 4) {
+            const r = pixels[i] >> 3      // 5位红色
+            const g = pixels[i + 1] >> 2  // 6位绿色 
+            const b = pixels[i + 2] >> 3  // 5位蓝色
+            
+            rgb565View[i / 4] = (r << 11) | (g << 5) | b
+          }
+          
+          // 创建带有LVGL图片头部的数据
+          const headerSize = 64 // lv_image_dsc_t 头部大小
+          const totalSize = headerSize + rgb565Data.byteLength
+          const finalData = new ArrayBuffer(totalSize)
+          const finalView = new Uint8Array(finalData)
+          
+          // 设置头部（简化的lv_image_dsc_t结构）
+          const header = new ArrayBuffer(headerSize)
+          const headerView = new DataView(header)
+          
+          // 设置图片格式和尺寸信息
+          headerView.setUint32(0, canvas.width, true)  // width
+          headerView.setUint32(4, canvas.height, true) // height
+          headerView.setUint32(8, 0x04, true)         // format (LV_IMG_CF_TRUE_COLOR)
+          headerView.setUint32(12, rgb565Data.byteLength, true) // data_size
+          
+          finalView.set(new Uint8Array(header), 0)
+          finalView.set(new Uint8Array(rgb565Data), headerSize)
+          
+          URL.revokeObjectURL(url)
+          resolve(finalData)
+        } catch (error) {
+          URL.revokeObjectURL(url)
+          reject(error)
+        }
+      }
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('无法加载图片'))
+      }
+      
+      img.src = url
+    })
+  }
+
+  /**
+   * 清理临时资源
+   */
+  cleanup() {
+    this.resources.clear()
+    this.tempFiles = []
+    this.convertedFonts.clear()
+    this.wakenetPacker.clear()
+    this.spiffsGenerator.clear()
+  }
+
+  /**
+   * 获取资源清单用于显示
+   * @returns {Array} 资源清单
+   */
+  getResourceSummary() {
+    const summary = []
+    const resources = this.preparePackageResources()
+    
+    // 统计各类资源
+    const counts = {
+      wakeword: 0,
+      font: 0, 
+      emoji: 0,
+      background: 0
+    }
+    
+    resources.files.forEach(file => {
+      counts[file.type] = (counts[file.type] || 0) + 1
+      
+      let description = ''
+      switch (file.type) {
+        case 'wakeword':
+          description = `唤醒词模型: ${file.name} (${file.modelType})`
+          break
+        case 'font':
+          if (file.config) {
+            description = `自定义字体: 大小${file.config.size}px, BPP${file.config.bpp}`
+          } else {
+            description = `预设字体: ${file.source}`
+          }
+          break
+        case 'emoji':
+          description = `表情: ${file.name} (${file.size.width}x${file.size.height})`
+          break
+        case 'background':
+          description = `${file.mode === 'light' ? '浅色' : '深色'}模式背景`
+          break
+      }
+      
+      summary.push({
+        type: file.type,
+        filename: file.filename,
+        description
+      })
+    })
+    
+    return {
+      files: summary,
+      counts,
+      totalFiles: summary.length,
+      indexJson: resources.indexJson
+    }
+  }
+}
+
+export default AssetsBuilder

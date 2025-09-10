@@ -274,10 +274,17 @@ const getBackgroundStyle = () => {
   const bg = props.config.theme.skin[themeMode.value]
   
   if (bg.backgroundType === 'image' && bg.backgroundImage) {
-    return {
-      backgroundImage: `url(${URL.createObjectURL(bg.backgroundImage)})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center'
+    try {
+      // 验证背景图片文件是否有效
+      if (bg.backgroundImage && typeof bg.backgroundImage === 'object' && bg.backgroundImage.size) {
+        return {
+          backgroundImage: `url(${URL.createObjectURL(bg.backgroundImage)})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }
+      }
+    } catch (error) {
+      console.warn('背景图片预览加载失败:', error)
     }
   }
   
@@ -364,24 +371,38 @@ const loadFont = async () => {
       
     } else if (props.config.theme.font.custom.file) {
       // 加载自定义字体
-      const fontFamily = 'CustomFontPreview'
-      const fontUrl = URL.createObjectURL(props.config.theme.font.custom.file)
-      
-      const style = document.createElement('style')
-      style.setAttribute('data-font-preview', 'true')
-      style.textContent = `
-        @font-face {
-          font-family: '${fontFamily}';
-          src: url('${fontUrl}');
-          font-display: swap;
+      try {
+        const fontFile = props.config.theme.font.custom.file
+        
+        // 验证文件对象是否有效
+        if (!fontFile || typeof fontFile !== 'object' || !fontFile.size) {
+          throw new Error('字体文件对象无效')
         }
-      `
-      document.head.appendChild(style)
-      
-      // 等待字体加载完成
-      await document.fonts.load(`16px "${fontFamily}"`)
-      loadedFontFamily.value = fontFamily
-      fontLoaded.value = true
+        
+        const fontFamily = 'CustomFontPreview'
+        const fontUrl = URL.createObjectURL(fontFile)
+        
+        const style = document.createElement('style')
+        style.setAttribute('data-font-preview', 'true')
+        style.textContent = `
+          @font-face {
+            font-family: '${fontFamily}';
+            src: url('${fontUrl}');
+            font-display: swap;
+          }
+        `
+        document.head.appendChild(style)
+        
+        // 等待字体加载完成
+        await document.fonts.load(`16px "${fontFamily}"`)
+        loadedFontFamily.value = fontFamily
+        fontLoaded.value = true
+      } catch (error) {
+        console.warn('自定义字体预览加载失败:', error)
+        // 使用系统默认字体作为fallback
+        loadedFontFamily.value = 'Arial, sans-serif'
+        fontLoaded.value = true
+      }
     } else {
       // 使用系统字体
       loadedFontFamily.value = 'system-ui'
@@ -408,7 +429,15 @@ const getEmotionImage = (emotionKey) => {
     const size = props.config.theme.emoji.preset === 'twemoji64' ? '64' : '32'
     return `/twemoji${size}/${emotionKey}.png`
   } else if (props.config.theme.emoji.type === 'custom' && props.config.theme.emoji.custom.images[emotionKey]) {
-    return URL.createObjectURL(props.config.theme.emoji.custom.images[emotionKey])
+    try {
+      const emojiFile = props.config.theme.emoji.custom.images[emotionKey]
+      // 验证表情文件是否有效
+      if (emojiFile && typeof emojiFile === 'object' && emojiFile.size) {
+        return URL.createObjectURL(emojiFile)
+      }
+    } catch (error) {
+      console.warn(`表情图片预览加载失败 (${emotionKey}):`, error)
+    }
   }
   return null
 }

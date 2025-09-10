@@ -209,6 +209,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
+import StorageHelper from '@/utils/StorageHelper.js'
 
 const props = defineProps({
   modelValue: {
@@ -304,7 +305,7 @@ const handleFileDrop = (event) => {
   }
 }
 
-const updateCustomFile = (file) => {
+const updateCustomFile = async (file) => {
   if (file && (file.type.includes('font') || file.name.toLowerCase().match(/\.(ttf|woff|woff2)$/))) {
     emit('update:modelValue', {
       ...props.modelValue,
@@ -314,12 +315,15 @@ const updateCustomFile = (file) => {
         ...localCustom.value
       }
     })
+
+    // 自动保存文件到存储
+    await StorageHelper.saveFontFile(file, localCustom.value)
   } else {
     alert('请选择有效的字体文件 (TTF, WOFF, WOFF2)')
   }
 }
 
-const clearFile = () => {
+const clearFile = async () => {
   emit('update:modelValue', {
     ...props.modelValue,
     custom: {
@@ -330,6 +334,9 @@ const clearFile = () => {
   if (fileInput.value) {
     fileInput.value.value = ''
   }
+
+  // 删除存储中的文件
+  await StorageHelper.deleteFontFile()
 }
 
 const getConfigSummary = () => {

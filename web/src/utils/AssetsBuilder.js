@@ -14,6 +14,7 @@ import browserFontConverter from './font_conv/BrowserFontConverter.js'
 import WakenetModelPacker from './WakenetModelPacker.js'
 import SpiffsGenerator from './SpiffsGenerator.js'
 import GifScaler from './GifScaler.js'
+import configStorage from './ConfigStorage.js'
 
 class AssetsBuilder {
   constructor() {
@@ -29,14 +30,17 @@ class AssetsBuilder {
       debug: true,
       scalingMode: 'auto'  // 自动选择最佳缩放模式
     }) // GIF 缩放器
+    this.configStorage = configStorage // 配置存储管理器
+    this.autoSaveEnabled = true // 是否启用自动保存
   }
 
   /**
    * 设置配置对象
    * @param {Object} config - 完整的配置对象
    */
-  setConfig(config) {
-    if (!this.validateConfig(config)) {
+  setConfig(config, options = {}) {
+    const strict = options?.strict ?? true
+    if (strict && !this.validateConfig(config)) {
       throw new Error('配置对象验证失败')
     }
     this.config = { ...config }
@@ -83,16 +87,152 @@ class AssetsBuilder {
    * @param {string} key - 资源键名
    * @param {File|Blob} file - 文件对象
    * @param {string} filename - 文件名
+   * @param {string} resourceType - 资源类型 (font, emoji, background)
    */
-  addResource(key, file, filename) {
+  addResource(key, file, filename, resourceType = 'other') {
     this.resources.set(key, {
       file,
       filename,
       size: file.size,
       type: file.type,
-      lastModified: file.lastModified || Date.now()
+      lastModified: file.lastModified || Date.now(),
+      resourceType
     })
+
+    // 自动保存文件到存储
+    if (this.autoSaveEnabled && file instanceof File) {
+      this.saveFileToStorage(key, file, resourceType).catch(error => {
+        console.warn(`自动保存文件 ${filename} 失败:`, error)
+      })
+    }
+
     return this
+  }
+
+  /**
+   * 保存文件到存储
+   * @param {string} key - 资源键名
+   * @param {File} file - 文件对象
+   * @param {string} resourceType - 资源类型
+   * @returns {Promise<void>}
+   */
+  async saveFileToStorage(key, file, resourceType) {
+    try {
+      await this.configStorage.saveFile(key, file, resourceType)
+      console.log(`文件 ${file.name} 已自动保存到存储`)
+    } catch (error) {
+      console.error(`保存文件到存储失败: ${file.name}`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 从存储中恢复资源文件
+   * @param {string} key - 资源键名
+   * @returns {Promise<boolean>} 是否成功恢复
+   */
+  async restoreResourceFromStorage(key) {
+    try {
+      const file = await this.configStorage.loadFile(key)
+      if (file) {
+        this.resources.set(key, {
+          file,
+          filename: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified,
+          resourceType: file.storedType,
+          fromStorage: true
+        })
+        console.log(`资源 ${key} 从存储恢复成功: ${file.name}`)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error(`从存储恢复资源失败: ${key}`, error)
+      return false
+    }
+  }
+
+  /**
+   * 恢复所有相关的资源文件
+   * @param {Object} config - 配置对象
+   * @returns {Promise<void>}
+   */
+  async restoreAllResourcesFromStorage(config) {
+    if (!config) return
+
+    const restoredFiles = []
+
+    // 恢复自定义字体文件
+    if (config.theme?.font?.type === 'custom' && config.theme.font.custom?.file === null) {
+      const fontKey = 'custom_font'
+      if (await this.restoreResourceFromStorage(fontKey)) {
+        const resource = this.resources.get(fontKey)
+        if (resource) {
+          config.theme.font.custom.file = resource.file
+          restoredFiles.push(`自定义字体: ${resource.filename}`)
+        }
+      }
+    }
+
+    // 恢复自定义表情图片
+    if (config.theme?.emoji?.type === 'custom' && config.theme.emoji.custom?.images) {
+      for (const [emojiName, file] of Object.entries(config.theme.emoji.custom.images)) {
+        if (file === null) {
+          const emojiKey = `emoji_${emojiName}`
+          if (await this.restoreResourceFromStorage(emojiKey)) {
+            const resource = this.resources.get(emojiKey)
+            if (resource) {
+              config.theme.emoji.custom.images[emojiName] = resource.file
+              restoredFiles.push(`表情 ${emojiName}: ${resource.filename}`)
+            }
+          }
+        }
+      }
+    }
+
+    // 恢复背景图片
+    if (config.theme?.skin?.light?.backgroundType === 'image' && config.theme.skin.light.backgroundImage === null) {
+      const bgKey = 'background_light'
+      if (await this.restoreResourceFromStorage(bgKey)) {
+        const resource = this.resources.get(bgKey)
+        if (resource) {
+          config.theme.skin.light.backgroundImage = resource.file
+          restoredFiles.push(`浅色背景: ${resource.filename}`)
+        }
+      }
+    }
+    
+    if (config.theme?.skin?.dark?.backgroundType === 'image' && config.theme.skin.dark.backgroundImage === null) {
+      const bgKey = 'background_dark'
+      if (await this.restoreResourceFromStorage(bgKey)) {
+        const resource = this.resources.get(bgKey)
+        if (resource) {
+          config.theme.skin.dark.backgroundImage = resource.file
+          restoredFiles.push(`深色背景: ${resource.filename}`)
+        }
+      }
+    }
+
+    // 恢复转换后的字体数据
+    try {
+      const fontInfo = this.getFontInfo()
+      if (fontInfo && fontInfo.type === 'custom') {
+        const tempKey = `converted_font_${fontInfo.filename}`
+        const tempData = await this.configStorage.loadTempData(tempKey)
+        if (tempData) {
+          this.convertedFonts.set(fontInfo.filename, tempData.data)
+          console.log(`转换后的字体数据已恢复: ${fontInfo.filename}`)
+        }
+      }
+    } catch (error) {
+      console.warn('恢复转换后的字体数据时出错:', error)
+    }
+
+    if (restoredFiles.length > 0) {
+      console.log('已从存储恢复的文件:', restoredFiles)
+    }
   }
 
   /**
@@ -100,6 +240,10 @@ class AssetsBuilder {
    * @returns {Object|null} 唤醒词模型信息
    */
   getWakewordModelInfo() {
+    if (!this.config || !this.config.chip || !this.config.theme) {
+      return null
+    }
+    
     const chipModel = this.config.chip.model
     const wakeword = this.config.theme.wakeword
     
@@ -121,6 +265,10 @@ class AssetsBuilder {
    * @returns {Object|null} 字体信息
    */
   getFontInfo() {
+    if (!this.config || !this.config.theme || !this.config.theme.font) {
+      return null
+    }
+    
     const font = this.config.theme.font
     
     if (font.type === 'preset') {
@@ -155,6 +303,10 @@ class AssetsBuilder {
    * @returns {Array} 表情集合信息数组
    */
   getEmojiCollectionInfo() {
+    if (!this.config || !this.config.theme || !this.config.theme.emoji) {
+      return []
+    }
+    
     const emoji = this.config.theme.emoji
     const collection = []
     
@@ -205,6 +357,10 @@ class AssetsBuilder {
    * @returns {Object} 皮肤配置信息
    */
   getSkinInfo() {
+    if (!this.config || !this.config.theme || !this.config.theme.skin) {
+      return {}
+    }
+    
     const skin = this.config.theme.skin
     const result = {}
     
@@ -331,8 +487,8 @@ class AssetsBuilder {
     })
 
     // 添加背景图片
-    const skin = this.config.theme.skin
-    if (skin.light?.backgroundType === 'image' && skin.light.backgroundImage) {
+    const skin = this.config?.theme?.skin
+    if (skin?.light?.backgroundType === 'image' && skin.light.backgroundImage) {
       resources.files.push({
         type: 'background',
         filename: 'background_light.raw',
@@ -340,7 +496,7 @@ class AssetsBuilder {
         mode: 'light'
       })
     }
-    if (skin.dark?.backgroundType === 'image' && skin.dark.backgroundImage) {
+    if (skin?.dark?.backgroundType === 'image' && skin.dark.backgroundImage) {
       resources.files.push({
         type: 'background', 
         filename: 'background_dark.raw',
@@ -384,6 +540,22 @@ class AssetsBuilder {
         await this.fontConverterBrowser.initialize()
         convertedFont = await this.fontConverterBrowser.convertToCBIN(convertOptions)
         this.convertedFonts.set(fontInfo.filename, convertedFont)
+
+        // 保存转换后的字体到临时存储
+        if (this.autoSaveEnabled) {
+          const tempKey = `converted_font_${fontInfo.filename}`
+          try {
+            await this.configStorage.saveTempData(tempKey, convertedFont, 'converted_font', {
+              filename: fontInfo.filename,
+              size: fontInfo.config.size,
+              bpp: fontInfo.config.bpp,
+              charset: fontInfo.config.charset
+            })
+            console.log(`转换后的字体已保存到存储: ${fontInfo.filename}`)
+          } catch (error) {
+            console.warn(`保存转换后的字体失败: ${fontInfo.filename}`, error)
+          }
+        }
       } catch (error) {
         console.error('字体转换失败:', error)
         throw new Error(`字体转换失败: ${error.message}`)
@@ -928,8 +1100,8 @@ class AssetsBuilder {
           const canvas = document.createElement('canvas')
           const ctx = canvas.getContext('2d', { willReadFrequently: true })
           
-          canvas.width = this.config.chip.display.width
-          canvas.height = this.config.chip.display.height
+          canvas.width = this.config?.chip?.display?.width || 320
+          canvas.height = this.config?.chip?.display?.height || 240
           
           // 使用 cover 模式绘制图片，保持比例并居中显示
           const imgAspectRatio = img.width / img.height
@@ -1050,6 +1222,54 @@ class AssetsBuilder {
     this.wakenetPacker.clear()
     this.spiffsGenerator.clear()
     this.gifScaler.dispose() // 清理 GifScaler 资源
+  }
+
+  /**
+   * 清理所有存储数据（重新开始功能）
+   * @returns {Promise<void>}
+   */
+  async clearAllStoredData() {
+    try {
+      await this.configStorage.clearAll()
+      this.cleanup()
+      console.log('所有存储数据已清理')
+    } catch (error) {
+      console.error('清理存储数据失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取存储状态信息
+   * @returns {Promise<Object>} 存储状态信息
+   */
+  async getStorageStatus() {
+    try {
+      const storageInfo = await this.configStorage.getStorageInfo()
+      const hasConfig = await this.configStorage.hasStoredConfig()
+      
+      return {
+        hasStoredData: hasConfig,
+        storageInfo,
+        autoSaveEnabled: this.autoSaveEnabled
+      }
+    } catch (error) {
+      console.error('获取存储状态失败:', error)
+      return {
+        hasStoredData: false,
+        storageInfo: null,
+        autoSaveEnabled: this.autoSaveEnabled
+      }
+    }
+  }
+
+  /**
+   * 启用/禁用自动保存
+   * @param {boolean} enabled - 是否启用
+   */
+  setAutoSave(enabled) {
+    this.autoSaveEnabled = enabled
+    console.log(`自动保存已${enabled ? '启用' : '禁用'}`)
   }
 
   /**

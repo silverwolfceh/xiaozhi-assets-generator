@@ -376,6 +376,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import StorageHelper from '@/utils/StorageHelper.js'
 
 const props = defineProps({
   modelValue: {
@@ -486,7 +487,7 @@ const handleFileDrop = (event, mode) => {
   }
 }
 
-const updateBackgroundImage = (mode, file) => {
+const updateBackgroundImage = async (mode, file) => {
   if (file && file.type.startsWith('image/')) {
     emit('update:modelValue', {
       ...props.modelValue,
@@ -495,12 +496,15 @@ const updateBackgroundImage = (mode, file) => {
         backgroundImage: file
       }
     })
+
+    // 自动保存背景图片到存储
+    await StorageHelper.saveBackgroundFile(mode, file)
   } else {
     alert('请选择有效的图片文件')
   }
 }
 
-const removeImage = (mode) => {
+const removeImage = async (mode) => {
   emit('update:modelValue', {
     ...props.modelValue,
     [mode]: {
@@ -516,6 +520,9 @@ const removeImage = (mode) => {
   if (mode === 'dark' && darkImageInput.value) {
     darkImageInput.value.value = ''
   }
+
+  // 删除存储中的背景文件
+  await StorageHelper.deleteBackgroundFile(mode)
 }
 
 const getImagePreview = (mode) => {

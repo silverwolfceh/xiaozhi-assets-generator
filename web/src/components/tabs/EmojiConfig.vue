@@ -220,6 +220,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import StorageHelper from '@/utils/StorageHelper.js'
 
 const props = defineProps({
   modelValue: {
@@ -332,7 +333,7 @@ const handleFileDrop = (event, emotionKey) => {
   }
 }
 
-const updateEmojiImage = (emotionKey, file) => {
+const updateEmojiImage = async (emotionKey, file) => {
   const validFormats = localCustom.value.format === 'gif' ? ['gif'] : ['png']
   const fileExtension = file.name.split('.').pop().toLowerCase()
   
@@ -348,12 +349,18 @@ const updateEmojiImage = (emotionKey, file) => {
         }
       }
     })
+
+    // 自动保存表情文件到存储
+    await StorageHelper.saveEmojiFile(emotionKey, file, {
+      size: localCustom.value.size,
+      format: localCustom.value.format
+    })
   } else {
     alert(`请选择有效的${localCustom.value.format.toUpperCase()}格式图片`)
   }
 }
 
-const removeImage = (emotionKey) => {
+const removeImage = async (emotionKey) => {
   const newImages = { ...props.modelValue.custom.images }
   delete newImages[emotionKey]
   
@@ -364,6 +371,9 @@ const removeImage = (emotionKey) => {
       images: newImages
     }
   })
+
+  // 删除存储中的表情文件
+  await StorageHelper.deleteEmojiFile(emotionKey)
 }
 
 const getPresetEmojiUrl = (packId, emotion) => {
@@ -376,7 +386,11 @@ const getImagePreview = (emotionKey) => {
     return getPresetEmojiUrl(props.modelValue.preset, emotionKey)
   } else {
     const file = props.modelValue.custom.images[emotionKey]
-    return file ? URL.createObjectURL(file) : null
+    // 仅当为 File 或 Blob 时创建预览，避免恢复后占位对象导致报错
+    if (file instanceof File || file instanceof Blob) {
+      return URL.createObjectURL(file)
+    }
+    return null
   }
 }
 

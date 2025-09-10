@@ -129,7 +129,7 @@ class GifScaler {
     const canvas = document.createElement('canvas')
     canvas.width = this.originalWidth
     canvas.height = this.originalHeight
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     
     // 保存前一帧的图像数据（用于disposal type 3）
     let previousFrameData = null
@@ -159,7 +159,7 @@ class GifScaler {
       const frameCanvas = document.createElement('canvas')
       frameCanvas.width = frame.dims.width
       frameCanvas.height = frame.dims.height
-      const frameCtx = frameCanvas.getContext('2d')
+      const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true })
       
       // 确保帧画布背景透明
       frameCtx.clearRect(0, 0, frame.dims.width, frame.dims.height)
@@ -202,7 +202,7 @@ class GifScaler {
     sourceCtx.putImageData(imageData, 0, 0)
     
     const targetCanvas = document.createElement('canvas')
-    const targetCtx = targetCanvas.getContext('2d')
+    const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true })
     targetCanvas.width = targetWidth
     targetCanvas.height = targetHeight
     
@@ -485,7 +485,7 @@ class GifScaler {
         quality: this.options.quality,
         width: this.targetWidth,
         height: this.targetHeight,
-        transparent: 'rgba(0,0,0,0)',
+        transparent: 'rgba(255, 0, 255, 0)',
         repeat: this.gifRepeat !== undefined ? this.gifRepeat : 0  // 0表示无限循环
         // gif.js 会自动处理透明像素，不需要手动设置 transparent 选项
       })
@@ -495,7 +495,7 @@ class GifScaler {
         const canvas = document.createElement('canvas')
         canvas.width = this.targetWidth
         canvas.height = this.targetHeight
-        const ctx = canvas.getContext('2d')
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
         
         // 确保画布背景透明
         ctx.clearRect(0, 0, this.targetWidth, this.targetHeight)

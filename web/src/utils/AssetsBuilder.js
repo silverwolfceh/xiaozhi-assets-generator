@@ -926,13 +926,33 @@ class AssetsBuilder {
       img.onload = () => {
         try {
           const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
+          const ctx = canvas.getContext('2d', { willReadFrequently: true })
           
           canvas.width = this.config.chip.display.width
           canvas.height = this.config.chip.display.height
           
-          // 绘制图片到画布，自动缩放到屏幕分辨率
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          // 使用 cover 模式绘制图片，保持比例并居中显示
+          const imgAspectRatio = img.width / img.height
+          const canvasAspectRatio = canvas.width / canvas.height
+          
+          let drawWidth, drawHeight, offsetX, offsetY
+          
+          if (imgAspectRatio > canvasAspectRatio) {
+            // 图片较宽，按高度缩放 (cover效果)
+            drawHeight = canvas.height
+            drawWidth = canvas.height * imgAspectRatio
+            offsetX = (canvas.width - drawWidth) / 2
+            offsetY = 0
+          } else {
+            // 图片较高，按宽度缩放 (cover效果)
+            drawWidth = canvas.width
+            drawHeight = canvas.width / imgAspectRatio
+            offsetX = 0
+            offsetY = (canvas.height - drawHeight) / 2
+          }
+          
+          // 绘制图片到画布，使用cover模式保持比例并居中
+          ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
           
           // 获取像素数据
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
@@ -950,23 +970,57 @@ class AssetsBuilder {
             rgb565View[i / 4] = (r << 11) | (g << 5) | b
           }
           
-          // 创建带有LVGL图片头部的数据
-          const headerSize = 64 // lv_image_dsc_t 头部大小
+          // LVGL 常量定义
+          const LV_IMAGE_HEADER_MAGIC = 0x19  // LVGL图片header魔数
+          const LV_COLOR_FORMAT_RGB565 = 0x12 // RGB565颜色格式
+          
+          // 计算stride（每行字节数）
+          const stride = canvas.width * 2  // RGB565每像素2字节
+          
+          // 创建符合lv_image_dsc_t结构的header
+          const headerSize = 28  // lv_image_dsc_t结构大小: header(12) + data_size(4) + data(4) + reserved(4) + reserved_2(4) = 28字节
           const totalSize = headerSize + rgb565Data.byteLength
           const finalData = new ArrayBuffer(totalSize)
           const finalView = new Uint8Array(finalData)
+          const headerView = new DataView(finalData)
           
-          // 设置头部（简化的lv_image_dsc_t结构）
-          const header = new ArrayBuffer(headerSize)
-          const headerView = new DataView(header)
+          let offset = 0
           
-          // 设置图片格式和尺寸信息
-          headerView.setUint32(0, canvas.width, true)  // width
-          headerView.setUint32(4, canvas.height, true) // height
-          headerView.setUint32(8, 0x04, true)         // format (LV_IMG_CF_TRUE_COLOR)
-          headerView.setUint32(12, rgb565Data.byteLength, true) // data_size
+          // lv_image_header_t结构 (16字节)
+          // magic: 8位, cf: 8位, flags: 16位 (共4字节)
+          const headerWord1 = (0 << 24) | (0 << 16) | (LV_COLOR_FORMAT_RGB565 << 8) | LV_IMAGE_HEADER_MAGIC
+          headerView.setUint32(offset, headerWord1, true)
+          offset += 4
           
-          finalView.set(new Uint8Array(header), 0)
+          // w: 16位, h: 16位 (共4字节)
+          const sizeWord = (canvas.height << 16) | canvas.width
+
+          headerView.setUint32(offset, sizeWord, true)  
+          offset += 4
+          
+          // stride: 16位, reserved_2: 16位 (共4字节)
+          const strideWord = (0 << 16) | stride
+          headerView.setUint32(offset, strideWord, true)
+          offset += 4
+          
+          // lv_image_dsc_t其余字段
+          // data_size: 32位 (4字节)
+          headerView.setUint32(offset, rgb565Data.byteLength, true)
+          offset += 4
+          
+          // data指针占位 (4字节，在实际使用中会指向数据部分)
+          headerView.setUint32(offset, headerSize, true)  // 相对偏移
+          offset += 4
+          
+          // reserved (4字节)
+          headerView.setUint32(offset, 0, true)
+          offset += 4
+          
+          // reserved_2 (4字节)  
+          headerView.setUint32(offset, 0, true)
+          offset += 4
+          
+          // 复制RGB565数据到header后面
           finalView.set(new Uint8Array(rgb565Data), headerSize)
           
           URL.revokeObjectURL(url)

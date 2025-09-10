@@ -9,16 +9,17 @@
     <div class="flex flex-col lg:flex-row gap-8">
       <!-- 设备模拟器 -->
       <div class="flex-1">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">设备预览</h3>
-        <div class="bg-gray-100 p-8 rounded-lg flex items-center justify-center">
-          <!-- 设备外框 -->
-          <div class="bg-gray-800 p-6 rounded-2xl shadow-2xl">
-            <div class="bg-gray-900 p-2 rounded-xl">
-              <!-- 屏幕区域 -->
-              <div 
-                :style="getScreenStyle()"
-                class="relative rounded-lg overflow-hidden border-2 border-gray-700 flex flex-col items-center justify-center"
-              >
+        <h3 class="text-lg font-medium text-gray-900 mb-4">设备预览 (1:1 像素比例)</h3>
+        <div class="bg-gray-100 p-4 rounded-lg">
+          <div class="max-w-full overflow-auto flex justify-center">
+            <!-- 设备外框 -->
+            <div class="bg-gray-800 p-6 rounded-2xl shadow-2xl inline-block">
+              <div class="bg-gray-900 p-2 rounded-xl">
+                <!-- 屏幕区域 -->
+                <div 
+                  :style="getScreenStyle()"
+                  class="relative rounded-lg overflow-hidden border-2 border-gray-700 flex flex-col items-center justify-center"
+                >
                 <!-- 背景层 -->
                 <div 
                   :style="getBackgroundStyle()"
@@ -78,6 +79,7 @@
             <div class="mt-3 text-center text-xs text-gray-400">
               {{ config.chip.display.width }} × {{ config.chip.display.height }}
               {{ config.chip.model.toUpperCase() }}
+            </div>
             </div>
           </div>
         </div>
@@ -259,14 +261,11 @@ const currentEmojiImage = computed(() => {
 // 获取屏幕样式
 const getScreenStyle = () => {
   const { width, height } = props.config.chip.display
-  // 将实际尺寸按比例缩放到合适的预览大小
-  const scale = Math.min(300 / width, 200 / height)
-  const displayWidth = Math.floor(width * scale)
-  const displayHeight = Math.floor(height * scale)
   
+  // 使用1:1像素比例，直接使用配置中的尺寸
   return {
-    width: `${displayWidth}px`,
-    height: `${displayHeight}px`
+    width: `${width}px`,
+    height: `${height}px`
   }
 }
 
@@ -297,20 +296,15 @@ const getEmojiStyle = () => {
     size = Math.min(props.config.theme.emoji.custom.size.width, props.config.theme.emoji.custom.size.height)
   }
   
-  // 根据屏幕大小调整表情大小
-  const { width } = props.config.chip.display
-  const scale = Math.min(300 / width, 1)
-  const displaySize = Math.floor(size * scale)
-  
+  // 使用1:1像素比例，直接使用配置中的表情尺寸
   return {
-    width: `${displaySize}px`,
-    height: `${displaySize}px`
+    width: `${size}px`,
+    height: `${size}px`
   }
 }
 
 // 获取文字样式
 const getTextStyle = () => {
-  const { width } = props.config.chip.display
   let fontSize = 14
   
   // 根据字体配置调整字号
@@ -324,17 +318,13 @@ const getTextStyle = () => {
     fontSize = props.config.theme.font.custom.size
   }
   
-  // 根据屏幕大小调整字号
-  const scale = Math.min(300 / width, 1)
-  const displaySize = Math.floor(fontSize * scale) - 2
-  
-  // 根据背景模式调整文字颜色
+  // 使用1:1像素比例，直接使用配置中的字体大小
   const textColor = themeMode.value === 'dark' 
     ? props.config.theme.skin.dark.textColor 
     : props.config.theme.skin.light.textColor
   
   return {
-    fontSize: `${Math.max(displaySize, 8)}px`,
+    fontSize: `${fontSize}px`,
     color: textColor,
     fontFamily: getFontFamily(),
     textShadow: themeMode.value === 'dark' ? '1px 1px 2px rgba(0,0,0,0.5)' : '1px 1px 2px rgba(255,255,255,0.5)'

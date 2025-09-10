@@ -6,11 +6,6 @@ const routes = [
     name: 'Home',
     component: () => import('@/views/HomePage.vue')
   },
-  {
-    path: '/gif-scaler-test',
-    name: 'GifScalerTest',
-    component: () => import('@/views/GifScalerTest.vue')
-  },
 ]
 
 const router = createRouter({

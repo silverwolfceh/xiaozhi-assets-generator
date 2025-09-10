@@ -156,25 +156,25 @@ const emit = defineEmits(['update:modelValue', 'next'])
 
 const presetConfigs = [
   {
-    id: 'lceda-esp32s3',
+    id: 'lichuang-dev',
     name: '立创·实战派 ESP32-S3',
     chip: 'esp32s3',
     display: { width: 320, height: 240, color: 'RGB565' }
   },
   {
-    id: 'espbox3',
-    name: 'ESP-BOX-3',
-    chip: 'esp32s3',
-    display: { width: 320, height: 240, color: 'RGB565' }
-  },
-  {
-    id: 'wuming-154',
+    id: 'xingzhi-cube-1.54tft-wifi',
     name: '无名科技·星智 1.54 TFT',
     chip: 'esp32s3',
     display: { width: 240, height: 240, color: 'RGB565' }
   },
   {
-    id: 'surfer-c3',
+    id: 'atoms3r-echo-base',
+    name: 'AtomS3R Echo Base',
+    chip: 'esp32s3',
+    display: { width: 128, height: 128, color: 'RGB565' }
+  },
+  {
+    id: 'surfer-c3-1.14tft',
     name: 'Surfer C3 1.14 TFT',
     chip: 'esp32c3',
     display: { width: 240, height: 135, color: 'RGB565' }

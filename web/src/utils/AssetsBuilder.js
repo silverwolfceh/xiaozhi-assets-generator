@@ -334,9 +334,11 @@ class AssetsBuilder {
       
       Object.entries(images).forEach(([name, file]) => {
         if (file) {
+          // 根据实际文件扩展名生成文件名
+          const fileExtension = file.name ? file.name.split('.').pop().toLowerCase() : 'png'
           collection.push({
             name,
-            file: `${name}.${emoji.custom.format}`,
+            file: `${name}.${fileExtension}`,
             source: file,
             size: { ...size }
           })

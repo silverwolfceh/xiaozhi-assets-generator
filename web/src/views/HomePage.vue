@@ -163,7 +163,7 @@ const config = ref({
       type: '',
       preset: '',
       custom: {
-        size: { width: 64, height: 64 },
+        size: { width: 160, height: 120 },
         format: 'png',
         images: {}
       }

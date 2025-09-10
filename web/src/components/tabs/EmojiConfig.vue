@@ -94,7 +94,7 @@
       <h4 class="font-medium text-gray-900">自定义表情包配置</h4>
       
       <!-- 基本配置 -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- 图片尺寸 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">图片宽度 (px)</label>
@@ -116,18 +116,6 @@
             max="200"
             class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
-        </div>
-
-        <!-- 图片格式 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">图片格式</label>
-          <select 
-            v-model="localCustom.format"
-            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="png">PNG (透明背景)</option>
-            <option value="gif">GIF (动态图片)</option>
-          </select>
         </div>
       </div>
 
@@ -162,7 +150,7 @@
               <input
                 :ref="emotion.key + 'Input'"
                 type="file"
-                :accept="localCustom.format === 'gif' ? '.gif' : '.png'"
+                accept=".png,.gif"
                 @change="(e) => handleFileSelect(e, emotion.key)"
                 class="hidden"
               >
@@ -273,8 +261,7 @@ const emotionList = [
 ]
 
 const localCustom = ref({
-  size: { width: 32, height: 32 },
-  format: 'png'
+  size: { width: 32, height: 32 }
 })
 
 const hasValidConfig = computed(() => {
@@ -334,7 +321,7 @@ const handleFileDrop = (event, emotionKey) => {
 }
 
 const updateEmojiImage = async (emotionKey, file) => {
-  const validFormats = localCustom.value.format === 'gif' ? ['gif'] : ['png']
+  const validFormats = ['png', 'gif']
   const fileExtension = file.name.split('.').pop().toLowerCase()
   
   if (validFormats.includes(fileExtension)) {
@@ -342,7 +329,7 @@ const updateEmojiImage = async (emotionKey, file) => {
       ...props.modelValue,
       custom: {
         ...props.modelValue.custom,
-        ...localCustom.value,
+        size: localCustom.value.size,
         images: {
           ...props.modelValue.custom.images,
           [emotionKey]: file
@@ -353,10 +340,10 @@ const updateEmojiImage = async (emotionKey, file) => {
     // 自动保存表情文件到存储
     await StorageHelper.saveEmojiFile(emotionKey, file, {
       size: localCustom.value.size,
-      format: localCustom.value.format
+      format: fileExtension
     })
   } else {
-    alert(`请选择有效的${localCustom.value.format.toUpperCase()}格式图片`)
+    alert('请选择有效的PNG或GIF格式图片')
   }
 }
 
@@ -413,18 +400,16 @@ const getConfigSummary = () => {
 
 // 移除可能导致无限递归的 watch
 // 使用 computed 来同步 localCustom，避免双向绑定冲突
-watch(() => [localCustom.value.size, localCustom.value.format], ([newSize, newFormat]) => {
+watch(() => localCustom.value.size, (newSize) => {
   if (props.modelValue.type === 'custom') {
     const currentCustom = props.modelValue.custom
-    // 只在实际值改变时触发更新
-    if (JSON.stringify(currentCustom.size) !== JSON.stringify(newSize) ||
-        currentCustom.format !== newFormat) {
+    // 只在尺寸实际值改变时触发更新
+    if (JSON.stringify(currentCustom.size) !== JSON.stringify(newSize)) {
       emit('update:modelValue', {
         ...props.modelValue,
         custom: {
           ...currentCustom,
-          size: newSize,
-          format: newFormat
+          size: newSize
         }
       })
     }
@@ -432,10 +417,9 @@ watch(() => [localCustom.value.size, localCustom.value.format], ([newSize, newFo
 }, { deep: true })
 
 // 初始化 localCustom
-if (props.modelValue.custom.size && props.modelValue.custom.format) {
+if (props.modelValue.custom.size) {
   localCustom.value = {
-    size: { ...props.modelValue.custom.size },
-    format: props.modelValue.custom.format
+    size: { ...props.modelValue.custom.size }
   }
 }
 </script>

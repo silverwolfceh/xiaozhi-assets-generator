@@ -1,5 +1,18 @@
 <template>
   <div>
+    <!-- Navigation -->
+    <div class="mb-6 flex justify-between items-center">
+      <h1 class="text-2xl font-bold text-gray-800">小智资产生成器</h1>
+      <div class="flex gap-4">
+        <router-link
+          to="/gif-scaler-test"
+          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          🖼️ GIF 缩放测试
+        </router-link>
+      </div>
+    </div>
+    
     <!-- Step Indicator -->
     <div class="flex items-center justify-center mb-8">
       <div v-for="(step, index) in steps" :key="index" class="flex items-center">

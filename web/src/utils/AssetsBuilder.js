@@ -13,6 +13,7 @@
 import browserFontConverter from './font_conv/BrowserFontConverter.js'
 import WakenetModelPacker from './WakenetModelPacker.js'
 import SpiffsGenerator from './SpiffsGenerator.js'
+import GifScaler from './GifScaler.js'
 
 class AssetsBuilder {
   constructor() {
@@ -23,6 +24,11 @@ class AssetsBuilder {
     this.convertedFonts = new Map() // 缓存转换后的字体
     this.wakenetPacker = new WakenetModelPacker() // 唤醒词模型打包器
     this.spiffsGenerator = new SpiffsGenerator() // SPIFFS 生成器
+    this.gifScaler = new GifScaler({ 
+      quality: 10, 
+      debug: true,
+      scalingMode: 'auto'  // 自动选择最佳缩放模式
+    }) // GIF 缩放器
   }
 
   /**
@@ -653,6 +659,7 @@ class AssetsBuilder {
     let imageData
     let needsScaling = false
     let imageFormat = 'png' // 默认格式
+    let isGif = false
     
     if (typeof resource.source === 'string' && resource.source.startsWith('preset:')) {
       // 预设表情包
@@ -661,7 +668,9 @@ class AssetsBuilder {
     } else {
       // 自定义表情
       const file = resource.source
-      imageData = await this.fileToArrayBuffer(file)
+      
+      // 检测是否为 GIF 格式
+      isGif = this.isGifFile(file)
       
       // 获取文件格式
       const fileExtension = file.name.split('.').pop().toLowerCase()
@@ -681,13 +690,31 @@ class AssetsBuilder {
       } catch (error) {
         console.warn(`无法获取表情图片尺寸: ${resource.name}`, error)
       }
+      
+      // 如果不需要缩放，直接读取文件
+      if (!needsScaling) {
+        imageData = await this.fileToArrayBuffer(file)
+      }
     }
     
-    // 如果需要缩放，进行等比例缩放
+    // 如果需要缩放，根据文件类型选择缩放方法
     if (needsScaling) {
       try {
         const targetSize = resource.size || { width: 32, height: 32 }
-        imageData = await this.scaleImageToFit(resource.source, targetSize, imageFormat)
+        
+        if (isGif) {
+          // 使用 GifScaler 处理 GIF 文件
+          console.log(`使用 GifScaler 处理 GIF 表情: ${resource.name}`)
+          const scaledGifBlob = await this.gifScaler.scaleGif(resource.source, {
+            maxWidth: targetSize.width,
+            maxHeight: targetSize.height,
+            keepAspectRatio: true
+          })
+          imageData = await this.fileToArrayBuffer(scaledGifBlob)
+        } else {
+          // 使用常规方法处理其他格式的图片
+          imageData = await this.scaleImageToFit(resource.source, targetSize, imageFormat)
+        }
       } catch (error) {
         console.error(`表情图片缩放失败: ${resource.name}`, error)
         // 缩放失败时使用原图
@@ -842,6 +869,22 @@ class AssetsBuilder {
   }
 
   /**
+   * 检测文件是否为 GIF 格式
+   * @param {File} file - 文件对象
+   * @returns {boolean} 是否为 GIF 格式
+   */
+  isGifFile(file) {
+    // 检查 MIME 类型
+    if (file.type === 'image/gif') {
+      return true
+    }
+    
+    // 检查文件扩展名
+    const extension = file.name.split('.').pop().toLowerCase()
+    return extension === 'gif'
+  }
+
+  /**
    * 获取图片尺寸信息
    * @param {ArrayBuffer|File} imageData - 图片数据
    * @returns {Promise<Object>} 图片尺寸信息 {width, height}
@@ -952,6 +995,7 @@ class AssetsBuilder {
     this.convertedFonts.clear()
     this.wakenetPacker.clear()
     this.spiffsGenerator.clear()
+    this.gifScaler.dispose() // 清理 GifScaler 资源
   }
 
   /**

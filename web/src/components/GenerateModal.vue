@@ -3,7 +3,7 @@
     <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
       <!-- 模态框头部 -->
       <div class="flex items-center justify-between p-6 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">生成 Assets.bin</h3>
+        <h3 class="text-lg font-medium text-gray-900">生成 assets.bin</h3>
         <button
           @click="$emit('close')"
           class="text-gray-400 hover:text-gray-500"
@@ -73,7 +73,7 @@
           </div>
           
           <div class="space-y-4">
-            <p class="text-gray-600 mt-2">正在生成 Assets.bin</p>
+            <p class="text-gray-600 mt-2">正在生成 assets.bin</p>
             <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
               <div 
                 class="bg-primary-500 h-2 rounded-full transition-all duration-500 ease-out"
@@ -195,6 +195,7 @@ const currentStep = ref('')
 const generatedFileSize = ref('')
 const generationTime = ref('')
 const generatedBlob = ref(null)
+const generationStartTime = ref(null)
 
 
 const progressSteps = ref([
@@ -436,9 +437,22 @@ const formatFileSize = (bytes) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+const formatDuration = (milliseconds) => {
+  if (milliseconds < 1000) {
+    return `${milliseconds}ms`
+  } else if (milliseconds < 60000) {
+    return `${(milliseconds / 1000).toFixed(1)}s`
+  } else {
+    const minutes = Math.floor(milliseconds / 60000)
+    const seconds = Math.floor((milliseconds % 60000) / 1000)
+    return `${minutes}m ${seconds}s`
+  }
+}
+
 const startGeneration = async () => {
   isGenerating.value = true
   progress.value = 0
+  generationStartTime.value = Date.now()
   
   try {
     // 创建AssetsBuilder实例
@@ -469,7 +483,9 @@ const startGeneration = async () => {
     
     // 更新生成结果
     generatedFileSize.value = formatFileSize(blob.size)
-    generationTime.value = new Date().toLocaleTimeString()
+    const endTime = Date.now()
+    const duration = endTime - generationStartTime.value
+    generationTime.value = formatDuration(duration)
     
     // 存储生成的文件用于下载
     generatedBlob.value = blob
@@ -483,7 +499,7 @@ const startGeneration = async () => {
     emit('generate', fileList.value.map(f => ({ id: f.id, name: f.name })))
     
   } catch (error) {
-    console.error('生成assets.bin失败:', error)
+    console.error('生成 assets.bin 失败:', error)
     
     // 重置状态
     isGenerating.value = false

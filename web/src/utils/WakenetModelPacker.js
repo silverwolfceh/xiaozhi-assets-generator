@@ -67,7 +67,7 @@ class WakenetModelPacker {
       let loadedFiles = 0
       for (const fileName of modelFiles) {
         try {
-          const response = await fetch(`/static/wakenet_model/${modelName}/${fileName}`)
+          const response = await fetch(`./static/wakenet_model/${modelName}/${fileName}`)
           if (response.ok) {
             const fileData = await response.arrayBuffer()
             this.addModelFile(modelName, fileName, fileData)

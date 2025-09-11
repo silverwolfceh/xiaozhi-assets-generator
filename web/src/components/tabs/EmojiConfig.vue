@@ -365,7 +365,7 @@ const removeImage = async (emotionKey) => {
 
 const getPresetEmojiUrl = (packId, emotion) => {
   const size = packId === 'twemoji64' ? '64' : '32'
-  return `/static/twemoji${size}/${emotion}.png`
+  return `./static/twemoji${size}/${emotion}.png`
 }
 
 const getImagePreview = (emotionKey) => {

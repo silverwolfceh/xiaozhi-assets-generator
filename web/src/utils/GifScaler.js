@@ -1,5 +1,3 @@
-import { parseGIF, decompressFrames } from 'gifuct-js'
-
 /**
  * GifScaler 类
  * 用于对 GIF 表情进行缩放处理
@@ -21,7 +19,9 @@ import { parseGIF, decompressFrames } from 'gifuct-js'
  * const scaler = new GifScaler({ 
  *   quality: 10, 
  *   debug: true,
- *   scalingMode: 'auto'  // 'auto', 'smooth', 'sharp', 'pixelated'
+ *   scalingMode: 'auto',  // 'auto', 'smooth', 'sharp', 'pixelated'
+ *   workers: 2,  // 使用 2 个 worker 线程进行并行处理
+ *   workerScript: '/share/gif.worker.js'  // Worker 脚本路径
  * })
  * const scaledGif = await scaler.scaleGif(gifFile, {
  *   maxWidth: 64,
@@ -30,6 +30,9 @@ import { parseGIF, decompressFrames } from 'gifuct-js'
  * })
  * ```
  */
+import { parseGIF, decompressFrames } from 'gifuct-js'
+import GIF from 'gif.js'
+
 
 class GifScaler {
   constructor(options = {}) {
@@ -38,6 +41,8 @@ class GifScaler {
       repeat: options.repeat !== undefined ? options.repeat : -1,  // 重复次数 (-1 为无限循环)
       debug: options.debug || false,  // 调试模式
       scalingMode: options.scalingMode || 'auto',  // 缩放模式: 'auto', 'smooth', 'sharp', 'pixelated'
+      workers: options.workers || 2,  // Worker 线程数量 (1-4, 更多线程可以提高大型 GIF 的处理速度)
+      workerScript: options.workerScript || '/workers/gif.worker.js',  // Worker 脚本路径
       ...options
     }
     
@@ -428,44 +433,8 @@ class GifScaler {
    */
   async generateGif(frames, delays) {
     try {
-      if (frames.length === 1) {
-        // 对于单帧，返回 PNG
-        const canvas = document.createElement('canvas')
-        canvas.width = this.targetWidth
-        canvas.height = this.targetHeight
-        const ctx = canvas.getContext('2d')
-        
-        // 确保画布背景透明
-        ctx.clearRect(0, 0, this.targetWidth, this.targetHeight)
-        ctx.putImageData(frames[0], 0, 0)
-        
-        return new Promise((resolve) => {
-          canvas.toBlob(resolve, 'image/png', 0.95)
-        })
-      }
-      
-      // 尝试使用 gif.js 生成多帧 GIF
-      if (typeof window !== 'undefined' && window.GIF) {
-        return await this.generateGifWithGifJs(frames, delays)
-      }
-      
-      // 如果没有 gif.js，返回第一帧作为静态图片
-      if (this.options.debug) {
-        console.warn('gif.js 未找到，返回第一帧作为静态图片')
-      }
-      
-      const canvas = document.createElement('canvas')
-      canvas.width = this.targetWidth
-      canvas.height = this.targetHeight
-      const ctx = canvas.getContext('2d')
-      
-      // 确保画布背景透明
-      ctx.clearRect(0, 0, this.targetWidth, this.targetHeight)
-      ctx.putImageData(frames[0], 0, 0)
-      
-      return new Promise((resolve) => {
-        canvas.toBlob(resolve, 'image/png', 0.95)
-      })
+      // 统一使用 gif.js 生成 GIF，无论单帧还是多帧
+      return await this.generateGifWithGifJs(frames, delays)
       
     } catch (error) {
       throw new Error(`GIF 生成失败: ${error.message}`)
@@ -480,13 +449,14 @@ class GifScaler {
    */
   async generateGifWithGifJs(frames, delays) {
     return new Promise((resolve, reject) => {
-      const gif = new window.GIF({
-        workers: 2,
+      const gif = new GIF({
+        workers: this.options.workers,
         quality: this.options.quality,
         width: this.targetWidth,
         height: this.targetHeight,
         transparent: 'rgba(255, 0, 255, 0)',
-        repeat: this.gifRepeat !== undefined ? this.gifRepeat : 0  // 0表示无限循环
+        repeat: this.gifRepeat !== undefined ? this.gifRepeat : 0,  // 0表示无限循环
+        workerScript: this.options.workerScript  // 指定 worker 脚本路径
         // gif.js 会自动处理透明像素，不需要手动设置 transparent 选项
       })
       

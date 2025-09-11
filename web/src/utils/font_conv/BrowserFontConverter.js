@@ -246,9 +246,9 @@ class BrowserFontConverter {
    */
   async loadCharsetFromFile(charset) {
     const charsetFiles = {
-      latin: './latin_charset.txt',
-      deepseek: './deepseek_charset.txt',
-      gb2312: './gb2312_charset.txt'
+      latin: './static/charsets/latin1.txt',
+      deepseek: './static/charsets/deepseek.txt',
+      gb2312: './static/charsets/gb2312.txt'
     }
     
     const filePath = charsetFiles[charset]

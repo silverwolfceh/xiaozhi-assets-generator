@@ -921,7 +921,7 @@ class AssetsBuilder {
    */
   async loadPresetFont(fontName) {
     try {
-      const response = await fetch(`/fonts/${fontName}.bin`)
+      const response = await fetch(`/static/fonts/${fontName}.bin`)
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
@@ -939,7 +939,7 @@ class AssetsBuilder {
    */
   async loadPresetEmoji(presetName, emojiName) {
     try {
-      const response = await fetch(`/${presetName}/${emojiName}.png`)
+      const response = await fetch(`/static/${presetName}/${emojiName}.png`)
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }

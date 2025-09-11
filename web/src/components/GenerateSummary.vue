@@ -351,7 +351,7 @@ const loadFont = async () => {
     if (props.config.theme.font.type === 'preset') {
       // 加载预设字体
       const fontFamily = 'PuHuiPreview'
-      const fontUrl = '/fonts/puhui_deepseek.ttf'
+      const fontUrl = '/static/fonts/puhui_deepseek.ttf'
       
       const style = document.createElement('style')
       style.setAttribute('data-font-preview', 'true')
@@ -427,7 +427,7 @@ const getFontFamily = () => {
 const getEmotionImage = (emotionKey) => {
   if (props.config.theme.emoji.type === 'preset') {
     const size = props.config.theme.emoji.preset === 'twemoji64' ? '64' : '32'
-    return `/twemoji${size}/${emotionKey}.png`
+    return `/static/twemoji${size}/${emotionKey}.png`
   } else if (props.config.theme.emoji.type === 'custom' && props.config.theme.emoji.custom.images[emotionKey]) {
     try {
       const emojiFile = props.config.theme.emoji.custom.images[emotionKey]

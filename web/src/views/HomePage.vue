@@ -1,9 +1,10 @@
 <template>
   <div>
-    <!-- 配置状态提示（左下角浮动通知） -->
-    <div 
-      v-if="hasStoredConfig" 
-      class="fixed bottom-4 left-4 z-50 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-lg transition-opacity duration-300 min-w-[300px]"
+    <!-- 配置状态提示（右下角浮动通知） -->
+    <div
+      v-if="hasStoredConfig"
+      class="fixed bottom-4 right-4 z-50 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-lg transition-opacity duration-300 min-w-[300px]"
+      @mouseenter="resetAutoHideTimer"
     >
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center">
@@ -539,5 +540,18 @@ const closeConfigNotice = () => {
   if (autoHideTimer.value) {
     clearTimeout(autoHideTimer.value)
   }
+}
+
+// 重置自动隐藏定时器（鼠标悬停时调用）
+const resetAutoHideTimer = () => {
+  // 清除之前的定时器
+  if (autoHideTimer.value) {
+    clearTimeout(autoHideTimer.value)
+  }
+
+  // 设置新的5秒定时器
+  autoHideTimer.value = setTimeout(() => {
+    hasStoredConfig.value = false
+  }, 5000)
 }
 </script>

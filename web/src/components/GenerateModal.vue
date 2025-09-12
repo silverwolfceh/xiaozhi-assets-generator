@@ -112,7 +112,7 @@
         </div>
 
         <!-- 完成状态 -->
-        <div v-if="isCompleted" class="text-center space-y-6">
+        <div v-if="isCompleted && !isFlashing" class="text-center space-y-6">
           <div class="mx-auto flex items-center justify-center">
             <svg class="w-20 h-20 text-green-600" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
@@ -141,8 +141,47 @@
               </svg>
               下载 assets.bin
             </button>
-            
+
+            <button
+              @click="startOnlineFlash"
+              :disabled="!deviceOnline"
+              class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+            >
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+              </svg>
+              在线烧录到设备
+            </button>
           </div>
+        </div>
+
+        <!-- 在线烧录进度 -->
+        <div v-if="isFlashing" class="space-y-6 text-center">
+          <div class="flex items-center justify-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+          </div>
+
+          <div class="space-y-4">
+            <p class="text-gray-600">正在烧录到设备</p>
+            <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                class="bg-blue-500 h-2 rounded-full transition-all duration-500 ease-out"
+                :style="{ width: flashProgress + '%' }"
+              ></div>
+            </div>
+            <div class="text-sm text-gray-600">
+              <div>{{ flashCurrentStep }}</div>
+              <div class="mt-1">{{ flashProgress }}% 完成</div>
+            </div>
+          </div>
+
+          <!-- 取消按钮 -->
+          <button
+            @click="cancelFlash"
+            class="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+          >
+            取消烧录
+          </button>
         </div>
       </div>
 
@@ -186,7 +225,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'generate'])
+const emit = defineEmits(['close', 'generate', 'startFlash', 'cancelFlash'])
 
 const isGenerating = ref(false)
 const isCompleted = ref(false)
@@ -196,6 +235,10 @@ const generatedFileSize = ref('')
 const generationTime = ref('')
 const generatedBlob = ref(null)
 const generationStartTime = ref(null)
+const deviceOnline = ref(false)
+const isFlashing = ref(false)
+const flashProgress = ref(0)
+const flashCurrentStep = ref('')
 
 
 const progressSteps = ref([
@@ -526,8 +569,87 @@ const downloadFile = () => {
   }
 }
 
+// 检查设备在线状态
+const checkDeviceOnline = async () => {
+  try {
+    // 获取URL参数中的token
+    const urlParams = new URLSearchParams(window.location.search)
+    const token = urlParams.get('token')
 
-onMounted(() => {
+    if (!token) {
+      deviceOnline.value = false
+      return
+    }
+
+    const response = await fetch('/api/messaging/device/tools/list', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    deviceOnline.value = response.ok
+  } catch (error) {
+    console.error('检查设备状态失败:', error)
+    deviceOnline.value = false
+  }
+}
+
+// 开始在线烧录
+const startOnlineFlash = async () => {
+  if (!generatedBlob.value) {
+    flashCurrentStep.value = '错误：没有可烧录的文件'
+    return
+  }
+
+  if (!deviceOnline.value) {
+    flashCurrentStep.value = '错误：设备不在线，无法进行烧录'
+    return
+  }
+
+  isFlashing.value = true
+  flashProgress.value = 0
+  flashCurrentStep.value = '准备开始烧录...'
+
+  try {
+    // 通知父组件开始在线烧录
+    emit('startFlash', {
+      blob: generatedBlob.value,
+      onProgress: (progress, step) => {
+        flashProgress.value = progress
+        flashCurrentStep.value = step
+      },
+      onComplete: () => {
+        isFlashing.value = false
+        flashProgress.value = 100
+        flashCurrentStep.value = '烧录完成！'
+      },
+      onError: (error) => {
+        isFlashing.value = false
+        flashCurrentStep.value = `烧录失败: ${error}`
+      }
+    })
+  } catch (error) {
+    isFlashing.value = false
+    console.error('启动烧录失败:', error)
+    flashCurrentStep.value = `启动烧录失败: ${error.message}`
+  }
+}
+
+// 取消烧录
+const cancelFlash = () => {
+  if (confirm('确定要取消烧录吗？')) {
+    isFlashing.value = false
+    flashProgress.value = 0
+    flashCurrentStep.value = ''
+    emit('cancelFlash')
+  }
+}
+
+
+onMounted(async () => {
   initializeFileList()
+  await checkDeviceOnline()
 })
 </script>

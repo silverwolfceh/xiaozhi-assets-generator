@@ -234,11 +234,10 @@ const callMcpTool = async (toolName, params = {}) => {
       return result
     } else {
       const errorText = await response.text()
-      console.error(`MCP工具 ${toolName} 失败:`, response.status, errorText)
       throw new Error(`调用${toolName}失败: ${response.status} - ${errorText}`)
     }
   } catch (error) {
-    console.error(`调用MCP工具 ${toolName} 失败:`, error)
+    console.error(`调用MCP工具 ${toolName} 失败:`, error.message)
     throw error
   }
 }
@@ -309,7 +308,11 @@ const handleStartFlash = async (flashData) => {
 
     // 步骤4: 重启设备
     onProgress(40, '重启设备...')
-    await callMcpTool('self.reboot')
+    // reboot指令没有返回值，不需要等待，直接调用
+    callMcpTool('self.reboot').catch(error => {
+      console.warn('reboot指令调用警告（设备可能已重启）:', error)
+      // 即使reboot失败，也继续流程，因为设备可能已经重启
+    })
 
     // 步骤5: 等待设备重启并建立HTTP连接（通过transfer_started事件）
     onProgress(50, '等待设备重启...')

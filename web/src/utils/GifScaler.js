@@ -42,7 +42,7 @@ class GifScaler {
       debug: options.debug || false,  // 调试模式
       scalingMode: options.scalingMode || 'auto',  // 缩放模式: 'auto', 'smooth', 'sharp', 'pixelated'
       workers: options.workers || 2,  // Worker 线程数量 (1-4, 更多线程可以提高大型 GIF 的处理速度)
-      workerScript: options.workerScript || '/workers/gif.worker.js',  // Worker 脚本路径
+      workerScript: options.workerScript || `${import.meta.env.BASE_URL}/workers/gif.worker.js`,  // Worker 脚本路径
       ...options
     }
     

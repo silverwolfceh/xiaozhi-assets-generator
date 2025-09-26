@@ -4,7 +4,7 @@ class WebSocketTransfer {
     this.ws = null
     this.isConnected = false
     this.isCancelled = false
-    this.chunkSize = 16 * 1024 // 16KB per chunk
+    this.chunkSize = 64 * 1024 // 64KB per chunk
     this.onProgress = null
     this.onError = null
     this.onComplete = null
